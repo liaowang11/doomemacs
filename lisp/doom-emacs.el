@@ -1692,8 +1692,20 @@ with `set-indent-vars!'."
       "Strip text properties from vars to reduce size and serialization errors."
       (letf! (defun* strip-properties (tree)
                (cond ((stringp tree) (substring-no-properties tree))
-                     ((consp tree) (cons (strip-properties (car tree))
-                                         (strip-properties (cdr tree))))
+                     ((consp tree)
+                      ;; Walk the cdr chain iteratively: histories can grow to
+                      ;; `history-length' entries, and a fully recursive walk
+                      ;; overflows `max-lisp-eval-depth'. Only nested conses
+                      ;; recurse, and those are shallow.
+                      (let* ((head (cons nil nil))
+                             (tail head))
+                        (while (consp tree)
+                          (setcdr tail (list (strip-properties (car tree))))
+                          (setq tail (cdr tail)
+                                tree  (cdr tree)))
+                        (when tree ; preserve dotted tails as-is
+                          (setcdr tail tree))
+                        (cdr head)))
                      (tree)))
         (dolist (var (append savehist-additional-variables
                              savehist-minibuffer-history-variables))
